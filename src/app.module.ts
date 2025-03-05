@@ -14,7 +14,7 @@ import { ConfigModule } from '@nestjs/config';
     ConfigModule.forRoot(),
     BullModule.forRoot({
       connection: {
-        url: 'rediss://default:AVNS_-eRz5o8Rhg_LbdPCrOo@valkey-284f87c7-jason-3bf6.c.aivencloud.com:16175',
+        url: process.env.ALVEN_SERVICE_URI,
       },
     }),
     RemindersModule,
