@@ -4,7 +4,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Job } from 'bullmq';
 import { RemindersService } from './reminders.service';
 
-export interface ReminderJob {
+export interface Reminder {
   id: string;
   title: string;
   description?: string;
@@ -26,14 +26,14 @@ export class RemindersConsumer extends WorkerHost {
   }
 
   @OnWorkerEvent('active')
-  onActive(job: Job<ReminderJob>) {
+  onActive(job: Job<Reminder>) {
     console.log(
       `Processing job ${job.id} of type ${job.name} with data ${job.data.title}...`,
     );
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async process(job: Job<ReminderJob>): Promise<any> {
+  async process(job: Job<Reminder>): Promise<any> {
     try {
       // Emit an event instead of calling NotificationService directly
       this.eventEmitter.emit('reminder.processed', {
@@ -45,6 +45,7 @@ export class RemindersConsumer extends WorkerHost {
       await this.reminderService.update(job.data.id, { status: 'COMPLETED' });
 
       this.logger.log(`Event emitted for job ${job.id}`);
+      console.log(`Event emitted for job ${job.id}`);
     } catch (error) {
       // If an error occurs, mark the job as failed
       this.logger.error(`Job ${job.id} failed: ${error.message}`);
@@ -53,8 +54,9 @@ export class RemindersConsumer extends WorkerHost {
   }
 
   @OnWorkerEvent('failed')
-  async onFailed(job: Job<ReminderJob>, error: Error) {
+  async onFailed(job: Job<Reminder>, error: Error) {
     this.logger.error(`Job ${job.id} failed with error: ${error.message}`);
+    console.log(`Job ${job.id} failed with error: ${error.message}`);
 
     // Decide whether to revert to PENDING or CANCELLED
     const newStatus = job.attemptsMade >= 3 ? 'CANCELLED' : 'PENDING';

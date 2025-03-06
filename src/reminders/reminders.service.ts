@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
 import { DatabaseService } from 'src/database/database.service';
-import { ReminderJob } from './reminders.processor';
+import { Reminder } from './reminders.processor';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 
@@ -16,7 +16,7 @@ export class RemindersService {
   ) {}
 
   // Reminder Queue Methods
-  private async _addJobToQueue(reminder: ReminderJob): Promise<void> {
+  private async _addJobToQueue(reminder: Reminder): Promise<void> {
     const delay = new Date(reminder.executionDate).getTime() - Date.now();
     await this.remindersQueue.add('reminder', reminder, {
       jobId: reminder.id,
@@ -25,31 +25,53 @@ export class RemindersService {
     });
   }
 
-  private async _updateJobInQueue(reminder: ReminderJob): Promise<void> {
+  private async _updateJobInQueue(reminder: Reminder): Promise<void> {
     const jobExists = await this.remindersQueue.getJob(reminder.id);
 
     if (jobExists) {
+      this.logger.log(
+        `Job found. Attempting to remove => Job Id: ${reminder.id}`,
+      );
+
       const removed = await this._removeJobFromQueue(reminder);
+
       if (removed) {
+        this.logger.log(
+          `Successfully removed Job. Re-adding => Job Id: ${reminder.id}`,
+        );
         await this._addJobToQueue(reminder);
       } else {
-        this.logger.error(`Unable to update Job => Job Id: ${reminder.id}`);
+        this.logger.error(`Unable to remove Job => Job Id: ${reminder.id}`);
       }
     } else {
       this.logger.warn(`Job not found in queue => Job Id: ${reminder.id}`);
     }
   }
 
-  private async _removeJobFromQueue(reminder: ReminderJob): Promise<boolean> {
-    const removed = await this.remindersQueue.remove(reminder.id);
+  private async _removeJobFromQueue(reminder: Reminder): Promise<boolean> {
+    const job = await this.remindersQueue.getJob(reminder.id);
 
-    if (removed) {
-      this.logger.log(`Removed a Job => Job Id: ${reminder.id}`);
-    } else {
-      this.logger.error(`Unable to remove a Job => Job Id: ${reminder.id}`);
+    if (!job) {
+      this.logger.warn(`Job not found for removal => Job Id: ${reminder.id}`);
+      return false;
     }
 
-    return Boolean(removed);
+    const state = await job.getState();
+    if (state === 'active') {
+      this.logger.warn(`Cannot remove active job => Job Id: ${reminder.id}`);
+      return false;
+    }
+
+    try {
+      await job.remove();
+      this.logger.log(`Successfully removed Job => Job Id: ${reminder.id}`);
+      return true;
+    } catch (error) {
+      this.logger.error(
+        `Failed to remove Job => Job Id: ${reminder.id}, Error: ${error.message}`,
+      );
+      return false;
+    }
   }
 
   // Handle missed reminders
